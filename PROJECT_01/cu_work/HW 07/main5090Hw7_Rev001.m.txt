@@ -1,0 +1,162 @@
+% ASEN 5050 HW # 7
+% Author: CG
+
+close all; clear all; clc;
+
+% Problem 1: 
+
+wgs84.ellipSemi = 6378137.0;
+wgs84.reciFlat = 298.257223563;
+wgs84.f = 1/wgs84.reciFlat;
+wgs84.earAngVel = 7292115.0E-11;
+wgs84.GM = 3986004.418E8;
+wgs84.spdLite = 2.99792458E8;
+
+meanSolarDay = 86400;
+meanSiderealDay = 86164.09954;
+
+% Part A
+
+% How many types of observations are avialable in the sample file? 7
+% Which one is p1? The 3rd
+% What is c1? Pseudorange for C/A L1 code
+
+% Part B: Read the obs file header and extract the approximate reciever
+% position. Use this for your assumed reciever position coordinates.
+
+    [fid, obsECEF, observables] = read_rinex_header('test.16o');
+    rinexv3 = read_rinex_obs5('test.16o',1:1:32,86400);
+    clc;
+    data = rinexv3.data;
+    disp('Problem 1 Part B')
+    fprintf('The assumed reciever position is %.4f %.4f %.4f m\n',obsECEF)
+    disp(' ')
+    
+% Read the set of observation records using read_rinex_obs5. (One time or
+% epoch 01:03:00 GPS time, all the observed satellites.) For each of the
+% observed satellites record calcualte, print, and check the following
+% values:
+%   a) the ionosphere free pseudorange ovservable P3(using P1 and P2) in
+%   meters
+%   b) the expected range in meters
+%   c) the elevation and azimuth in degrees
+%   d) the satellite clock correction in meters
+%   e) the relativistic correction in meters
+
+    tStart = data(1,2);
+    epoch = tStart + 60*63;
+    aa = find(data(:,2) == epoch);
+    newDat = data(aa,:);
+    
+    % Ionosphere free pseudorange observable P3
+        %p3 = 2.546*newDat(:,6) - 1.546*newDat(:,7);
+        p3 = ((1575.42^2)/(1575.42^2 - 1227.6^2))*newDat(:,6) - ((1227.6^2)/(1575.42^2 - 1227.6^2))*newDat(:,7);
+    
+    % Expected range in meters
+    [brdc3000,ionoparams3000] = read_GPSbroadcast('brdc3000.16n');
+    for ii = 1:1:length(newDat)
+        [health,x,v,relcorr,satClkCorr] = broadcast2xv(brdc3000,[data(1) epoch],newDat(ii,3), 'eph');
+        satECEF = x;
+        lla = ecef2lla(obsECEF');
+        [range, az,ele] = ecef2topo( obsECEF, satECEF', lla(1), lla(2), wgs84 );
+        [range0, range1,] = compute_range(brdc3000, newDat(ii,3), [data(1) epoch], obsECEF, wgs84);
+        rangeTopo(ii,1) = range;
+        azimuth(ii,1) = az;
+        elevation(ii,1) = ele;
+        geoRange(ii,1) = range0;
+        expRange(ii,1) = range1;
+        relativity(ii,1) = relcorr;
+        satClock(ii,1) = satClkCorr;
+        satPos(ii,:) = x;
+    end
+
+quest2 = [newDat(:,3), p3, expRange, elevation, azimuth, satClock, relativity];
+
+% Question 3: Construct and print the A-Matrix as discussed in lecture or
+% in your book.
+    
+    %A = ones(length(newDat),4);
+    for jj = 1:1:length(newDat)
+        A(jj,:) = [-(satPos(jj,1)-obsECEF(1))/geoRange(jj), -(satPos(jj,2)-obsECEF(2))/geoRange(jj), -(satPos(jj,3)-obsECEF(3))/geoRange(jj), 1];
+    end
+% Problem 4: Compute and print the prefit residuals (dy) correcting for
+% ionospheric errors, satellite clock, and relativity. 
+    
+    %dy(ii) = p3(ii) - range0 + satClkCorr - relcorr;
+    dy = p3 - expRange + satClock - relativity;
+
+% Problem 5: Plot these residuals as a function of the satellite elevation
+% angle. What do you think is the cause of the residuals? Use the simple
+% model for the dry component of the troposphere given in class and compare
+% it with these residuals.
+
+    eleAng = 4:1:70;
+    dryMod = 2.5./sind(eleAng);
+
+    figure()
+    plot(elevation,dy,'*')
+    hold on
+    title('Residuals versus satellite elevation angle')
+    ylabel('Residual [m]')
+    xlabel('Satellite Elevation [\circ]')
+    plot(eleAng,dryMod)
+    legend('Sat Data','Simple Troposhere Model')
+    
+    
+% Problem 6: Form the least squares solution for dx based on dy = Ax + e.
+% Print the dx, dy, dz, and db to a precision of 1cm. If the information in
+% the deader is correct, this will be the point solution error. 
+    
+    tropErr = 2.5./(sind(elevation));
+    dy = p3 - expRange + satClock - relativity - tropErr;
+    dx = inv(transpose(A)*A)*transpose(A)*dy;
+    
+% Problem 7: Now, instead of using the correct location from the RINEX
+% header, use an inital estimate that is way off. Compute the A matrix and
+% the pre-fit residuals. Compute the least square correction and iterate
+% your solution 5 times. For each iteration print the position correction,
+% and your new estimate. Does it converge to the correct answer?
+
+    [fid, obsECEF, observables] = read_rinex_header('mystery3200.16o');
+    rinexv3 = read_rinex_obs5('mystery3200.16o',1:1:32,86400);
+    clc;
+    data = rinexv3.data;
+    [brdc3000,ionoparams3000] = read_GPSbroadcast('brdc3200.16n');
+    epoch = 172860;
+
+
+    % Start in Boulder
+        lat = 40; long = -105; alt = 1631;
+        newObsECEF = lla2ecef([lat, long, alt]);
+        
+    for kk = 1:1:5
+        for ii = 1:1:length(newDat)
+        [health,x,v,relcorr,satClkCorr] = broadcast2xv(brdc3000,[data(1) epoch],newDat(ii,3), 'eph');
+        satECEF = x;
+        lla = ecef2lla(newObsECEF);
+        [range, az,ele] = ecef2topo( newObsECEF', satECEF', lla(1), lla(2), wgs84 );
+        [range0, range1] = compute_range(brdc3000, newDat(ii,3), [data(1) epoch], newObsECEF', wgs84);
+        rangeTopo2(ii,1) = range;
+        azimuth2(ii,1) = az;
+        elevation2(ii,1) = ele;
+        geoRange2(ii,1) = range0;
+        expRange2(ii,1) = range1;
+        relativity2(ii,1) = relcorr;
+        satClock2(ii,1) = satClkCorr;
+        satPos2(ii,:) = x;
+        end
+        
+        for jj = 1:1:length(newDat)
+            A2(jj,:) = [-(satPos(jj,1)-obsECEF(1))/geoRange(jj), -(satPos(jj,2)-obsECEF(2))/geoRange(jj), -(satPos(jj,3)-obsECEF(3))/geoRange(jj), 1];
+        end
+        
+        tropErr2 = 2.5./(sind(elevation2));
+        dy2 = p3 - expRange2 + satClock2 - relativity2 - tropErr2;
+        
+        dx2 = inv(transpose(A2)*A2)*transpose(A2)*dy2;
+        aaa(kk,:) = dx2;
+        
+        newObsECEF = (newObsECEF(1:3)' + dx2(1:3))';
+        lla2(kk,:)  = ecef2lla(newObsECEF);
+    end
+

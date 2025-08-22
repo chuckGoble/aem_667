@@ -1,0 +1,146 @@
+% ASEN 5090 HW # 6
+% Author: CG
+
+close all; clear all; clc; format longeng;
+
+S = load('GPS_positions2.mat');
+data = S.data;
+
+% Problem 1: Compute and submit the mean X, Y, Z, position, and subtract
+% this from each of the recorded values to find the deviations dX, dY, dZ.
+% Compute the latitude, longitude, and height of the mean position.
+
+    xCol = data(:,2); yCol = data(:,3); zCol = data(:,4);
+    
+    % find the average of each column
+    xAvg = sum(xCol)/length(xCol);
+    fprintf('The average for X in ECEF is %f km\n',xAvg)
+    yAvg = sum(yCol)/length(yCol);
+    fprintf('The average for Y in ECEF is %f km\n',yAvg)
+    zAvg = sum(zCol)/length(zCol);
+    fprintf('The average for Z in ECEF is %f km\n',zAvg)
+    me = mean(data);
+    
+    % find the deviations from each column of data
+    dX = xCol - xAvg;
+    dY = yCol - yAvg;
+    dZ = zCol - zAvg;
+    
+    % Compute the latitude, longitude, and height of the mean position.
+    lla = ecef2lla([xAvg, yAvg, zAvg]);
+    latitude = lla(1);
+    fprintf('The Latitude is %f degrees\n', latitude)
+    longitude = lla(2);
+    fprintf('The Longitude is %f degrees\n', longitude)
+    height = lla(3);
+    fprintf('The height is %f meters\n', height)
+    
+% Problem 2: Convert the deviation in WGS-84 to ENU deviations.
+    devMatECEF = [dX, dY, dZ];
+    Q = ROT1(90-latitude)*ROT3(90+longitude);
+    disp('The rotation matrix for ECEF to ENU is:')
+    disp(Q)
+    for ii = 1:1:length(devMatECEF)
+        devMatENU(ii,:) = Q*devMatECEF(ii,:)';
+    end
+    me = mean(devMatENU);
+    fprintf('The average E deviation is %E meters\n',me(1))
+    fprintf('The average N deviation is %E meters\n',me(2))
+    fprintf('The average U deviation is %E meters\n',me(3))
+    
+% Problem 3: Plot the East, North, and Height deviations versus time on
+% separate graphs.
+
+    figure()
+    subplot(2,2,1)
+    plot(data(:,1),devMatENU(:,1))
+    title('Deviation in East direction')
+    ylabel('Deviation')
+    xlabel('time')
+    hold on
+    subplot(2,2,2)
+    plot(data(:,1),devMatENU(:,2))
+    title('Deviation in North direction')
+    ylabel('Deviation')
+    xlabel('time')
+    subplot(2,2,3)
+    plot(data(:,1),devMatENU(:,3))
+    title('Deviation in Height direction')
+    ylabel('Deviation')
+    xlabel('time')
+    subplot(2,2,4)
+    plot(data(:,1),data(:,5))
+    title('Change in Number of visible satellites')
+    ylabel('Number of Visible Satellites')
+    xlabel('time')
+    
+% Problem 4: Make a scatter plot of the North error vs East error in
+% meters. When you make the plot be sure that the grid is square.
+
+    figure()
+    s = linspace(1,10,length(devMatENU));
+    c = linspace(1,10,length(devMatENU));
+    scatter(devMatENU(:,1),devMatENU(:,2),1)
+    xlabel('East Error [meters]')
+    ylabel('North Error [meters]')
+    axis square
+    grid on
+    
+    
+% Compute and submit the standard deviations of the N, E, and height errors
+% in meters.
+
+    E_std = std(devMatENU(:,1));
+    fprintf('The standard deviation for E is %f\n',E_std)
+    N_std = std(devMatENU(:,2));
+    fprintf('The standard deviation for N is %f\n',N_std)
+    H_std = std(devMatENU(:,3));
+    fprintf('The standard deviation for U is %f\n',H_std)
+    
+    
+% For the East-North errors, find a) the error covariance matrix; b) the
+% semimajor and semiminor axes of the error ellipse; and c) the 50 % CEP
+
+    varN = N_std^2;
+    varE = E_std^2;
+    corner = sum(devMatENU(:,1)'*devMatENU(:,2))/(length(devMatENU) - 1);
+    
+    P = [varN,corner;corner,varE];
+    disp('The covariance matrix is:')
+    disp(P)
+    
+    [eigVec, eigVal] = eig(P);
+    
+    semiMajorAxis = sqrt(max(max(eigVal)));
+    fprintf('The semi-major axis is %f\n',semiMajorAxis)
+    semiMinorAxis = sqrt(min(max(eigVal)));
+    fprintf('The semi-major axis is %f\n',semiMinorAxis)
+    
+    CEP = 0.59*(N_std + E_std);
+    fprintf('The CEP approximation is %f\n',CEP)
+     
+    cep50 = median((sqrt(devMatENU(:,1).^2 + devMatENU(:,2).^2)));
+    fprintf('The CEP for 50 percent is %f\n',cep50)
+    
+    th = atan2(eigVec(2,1),eigVec(1,1));
+    fprintf('The angle offset of the ellipse is %f radians\n', -th)
+    
+    figure()
+    s = linspace(1,10,length(devMatENU));
+    c = linspace(1,10,length(devMatENU));
+    scatter(devMatENU(:,1),devMatENU(:,2),3,'y')
+    hold on
+    axis equal
+    grid on
+    xlabel('East Error [meters]')
+    ylabel('North Error [meters]')
+    
+    C = drawellipse(semiMajorAxis, semiMinorAxis, -th, me(1), me(2),'b');
+    D = drawellipse(CEP,CEP,-th,me(1),me(2),'r');
+    E = drawellipse(cep50,cep50,-th,me(1),me(2),'k');
+    legend('Data Points','1 \sigma Error Ellipse','approx 50% CEP','exact 50% CEP','Location','SouthEast')
+    
+    for jj = 1:1:length(xCol)
+        lla2(jj,:)=ecef2lla([xCol(jj,1),yCol(jj,1),zCol(jj,1)]);
+    end
+    
