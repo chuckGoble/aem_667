@@ -34,6 +34,43 @@ def make_icp_df(path_list):
     return pd.concat(sats)
 
 
+def rot_1(ang, flag=True):
+    return
+
+
+def rot_3(ang, flag=True):
+    return
+
+
+def ecef_to_lla(ecef_pos_vec):
+    return
+
+
+def lla_to_efec():
+    return
+
+
+def ecef_to_enu(ecef_pos, lat, lon):
+    angle_one = 90 - lat
+    dcm_one = rot_1(angle_one)
+
+    angle_three = lon + 90
+    dcm_three = rot_3(angle_three)
+    
+    dcm = dcm_three @ dcm_one
+    
+    enu = dcm @ ecef_pos
+    return
+
+
+def ecef_to_ned():
+    return
+
+
+def ecef_to_topo(obsECEF, satECEF, lat, lon, p):
+    return
+
+
 if __name__ == '__main__':
     # Load Base Station ECEF Data
     base_ecef = glob(str(CODE / '*' / '*ecef*.txt'))
@@ -107,8 +144,10 @@ if __name__ == '__main__':
     prn_state_list = [pd.read_csv(ii) for ii in prn_state_list]
     prn_states = pd.concat(prn_state_list)
 
-    # Compute the relative position vector between the orbit and base/rover
-    base_los = prn_states[:, 'SAT_POS_X_m':'SAT_POS_Z_M'] - base_origin_ecef.T
-    rover_los = prn_states[:, 'SAT_POS_X_m':'SAT_POS_Z_M'] - base_origin_ecef.T
+    # Compute the relative position vector between the GPS Satellites and the Base
+    avg_base_rel_pos = prn_states[:, 'SAT_POS_X_m':'SAT_POS_Z_M'] - base_origin_ecef.T
 
+    # Compute the Line of Sight vector between the GPS Satellites and the Base 
+
+    # Compute the Line of Sight vector between the GPS Satellites and the Rover 
     # TODO: Plots
